@@ -95,4 +95,4 @@ API JSON :
 
 ## Licence
 
-[MIT](LICENSE) © 2026 F.X. ROBIN — fourni « tel quel », sans aucune garantie.
+[MIT](LICENSE) © 2026 François-Xavier Robin — fourni « tel quel », sans aucune garantie.
