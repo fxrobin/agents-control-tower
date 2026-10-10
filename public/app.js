@@ -1,3 +1,5 @@
+import { initHistory, refreshHistory } from './history.js';
+
 const grid = document.getElementById('grid');
 const gridOc = document.getElementById('grid-opencode');
 const gridVibe = document.getElementById('grid-vibe');
@@ -86,7 +88,15 @@ document.querySelectorAll('.tab').forEach(btn=>{
     renderActive();
   });
 });
+const toolbar = document.getElementById('toolbar');
+const historyEl = document.getElementById('history');
+initHistory(historyEl);
+
 function syncTabVisibility(){
+  const isHistory = activeTab==='history';
+  toolbar.style.display = isHistory ? 'none' : '';
+  historyEl.style.display = isHistory ? 'block' : 'none';
+  if (isHistory) empty.style.display = 'none';
   kpisClaude.style.display = activeTab==='claude' ? 'grid' : 'none';
   kpisOc.style.display = activeTab==='opencode' ? 'grid' : 'none';
   kpisVibe.style.display = activeTab==='vibe' ? 'grid' : 'none';
@@ -530,6 +540,7 @@ function renderQuota(q){
 }
 
 function renderActive(){
+  if (activeTab==='history') { refreshHistory(); return; }
   if (activeTab==='claude' && lastClaude) renderClaude(lastClaude);
   if (activeTab==='opencode' && lastOc) renderOc(lastOc);
   if (activeTab==='vibe' && lastVibe) renderVibe(lastVibe);
@@ -555,6 +566,10 @@ async function fetchAndRender(){
       renderOc(data);
       fetch('/api/sessions').then(x=>x.json()).then(d=>{ if(!d.error) renderClaude(d); }).catch(()=>{});
       fetch('/api/vibe-sessions?limit='+opencodeLimit.value).then(x=>x.json()).then(d=>{ if(!d.error) renderVibe(d); }).catch(()=>{});
+    } else if (activeTab==='history'){
+      // L'historique se rafraîchit à son rythme (60 s) ; les sessions live restent à jour pour les compteurs
+      await refreshHistory();
+      fetch('/api/sessions').then(x=>x.json()).then(d=>{ if(!d.error) renderClaude(d); }).catch(()=>{});
     } else {
       const r = await fetch('/api/vibe-sessions?limit='+opencodeLimit.value);
       const data = await r.json();

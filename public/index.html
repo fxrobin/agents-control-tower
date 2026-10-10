@@ -34,6 +34,7 @@
   <button class="tab active" data-tab="claude">◈ Claude Code <span class="tab-count" id="tabClaudeCount">—</span></button>
   <button class="tab" data-tab="opencode">⬡ OpenCode <span class="tab-count" id="tabOpencodeCount">—</span></button>
   <button class="tab" data-tab="vibe">⬢ Mistral Vibe <span class="tab-count" id="tabVibeCount">—</span></button>
+  <button class="tab tab-history" data-tab="history">◷ Historique</button>
 </nav>
 
 <section class="kpis" id="kpis-claude">
@@ -58,7 +59,7 @@
 </section>
 
 <main>
-  <div class="toolbar">
+  <div class="toolbar" id="toolbar">
     <input id="filterInput" type="search" placeholder="Filtrer par projet, cwd, modèle, outil…">
     <label class="check-label" id="hideObserverLabel" title="Masque les sessions claude-mem observer (cwd ~/.claude-mem/observer-sessions)"><input type="checkbox" id="hideObserver" checked> masquer observer-sessions</label>
     <span class="hint" id="hint">—</span>
@@ -72,6 +73,7 @@
   <div id="grid" class="grid"></div>
   <div id="grid-opencode" class="grid" style="display:none"></div>
   <div id="grid-vibe" class="grid" style="display:none"></div>
+  <div id="history" class="history" style="display:none"></div>
   <div id="empty" class="empty" style="display:none">
     <p id="emptyText">Aucune session Claude Code active détectée.</p>
     <p class="empty-sub" id="emptySub">Lance <code>claude</code> dans un terminal, la tour s'actualise automatiquement.</p>

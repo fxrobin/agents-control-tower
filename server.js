@@ -6,6 +6,7 @@ import { collectSessions } from './collector.js';
 import { collectOpencodeSessions } from './collector-opencode.js';
 import { collectVibeSessions } from './collector-vibe.js';
 import { collectQuota } from './collector-quota.js';
+import { collectHistory } from './collector-history.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -79,6 +80,21 @@ const server = http.createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message, stack: e.stack }));
     }
+    return;
+  }
+
+  if (req.url.startsWith('/api/history')) {
+    const url = new URL(req.url, 'http://localhost');
+    const days = [30, 90, 365].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 90;
+    collectHistory(days)
+      .then(data => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.end(JSON.stringify(data));
+      })
+      .catch(e => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message, stack: e.stack }));
+      });
     return;
   }
 

@@ -96,8 +96,16 @@ function emptySummary() {
   };
 }
 
-/** Intègre une ligne du transcript au résumé courant. */
-function applyLine(acc, j) {
+const ZERO_USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+
+/**
+ * Intègre une ligne du transcript au résumé courant.
+ * Claude Code écrit une réponse en plusieurs lignes (une par bloc de contenu) qui portent
+ * le même `message.id` et un `usage` mis à jour au fil du streaming : seule la dernière
+ * ligne de chaque réponse compte, d'où `usageById` qui remplace la contribution précédente.
+ */
+function applyLine(state, j) {
+  const acc = state.acc;
   if (j.cwd) acc.cwd = j.cwd;
   if (j.gitBranch) acc.gitBranch = j.gitBranch;
   if (j.type === 'user') {
@@ -106,15 +114,19 @@ function applyLine(acc, j) {
     if (txt) { acc.lastHumanText = txt; acc.pendingQuestion = false; }
   }
   if (j.type === 'assistant') {
-    acc.assistantCount++;
     const msg = j.message;
     if (msg?.model) acc.model = msg.model;
     const u = msg?.usage;
     if (u) {
-      acc.tokenAgg.input += u.input_tokens || 0;
-      acc.tokenAgg.output += u.output_tokens || 0;
-      acc.tokenAgg.cacheRead += u.cache_read_input_tokens || 0;
-      acc.tokenAgg.cacheCreate += u.cache_creation_input_tokens || 0;
+      const id = msg.id || j.uuid;
+      const prev = state.usageById.get(id);
+      if (!prev) acc.assistantCount++;
+      const p = prev || ZERO_USAGE;
+      state.usageById.set(id, u);
+      acc.tokenAgg.input += (u.input_tokens || 0) - (p.input_tokens || 0);
+      acc.tokenAgg.output += (u.output_tokens || 0) - (p.output_tokens || 0);
+      acc.tokenAgg.cacheRead += (u.cache_read_input_tokens || 0) - (p.cache_read_input_tokens || 0);
+      acc.tokenAgg.cacheCreate += (u.cache_creation_input_tokens || 0) - (p.cache_creation_input_tokens || 0);
       if (!j.isSidechain) {
         acc.contextTokens = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
       }
@@ -143,7 +155,7 @@ function summarizeJsonl(jsonlPath) {
   let state = transcripts.get(jsonlPath);
   // Fichier tronqué ou remplacé : on repart de zéro
   if (!state || stat.size < state.offset) {
-    state = { offset: 0, rest: Buffer.alloc(0), acc: emptySummary() };
+    state = { offset: 0, rest: Buffer.alloc(0), acc: emptySummary(), usageById: new Map() };
     transcripts.set(jsonlPath, state);
   }
   if (stat.size > state.offset) {
@@ -162,7 +174,7 @@ function summarizeJsonl(jsonlPath) {
           data = data.subarray(nl + 1);
           if (!line) continue;
           let j; try { j = JSON.parse(line); } catch { continue; }
-          applyLine(state.acc, j);
+          applyLine(state, j);
         }
         state.rest = Buffer.from(data);
       }

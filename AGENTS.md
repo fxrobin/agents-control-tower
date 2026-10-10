@@ -16,8 +16,9 @@ Mistral Vibe). Node.js ≥ 18, modules ES, **aucune dépendance npm**, frontend 
 | `collector.js` | Sessions Claude Code : `~/.claude/sessions/*.json` (statut `idle`/`busy`/`waiting`, `waitingFor`, `bridgeSessionId`), PID vivant via `kill(pid, 0)`, transcripts `~/.claude/projects/**/*.jsonl` lus de façon incrémentale (offset mémorisé par fichier), RSS et cwd via `/proc` |
 | `collector-opencode.js` | Sessions OpenCode via `opencode db "<SQL>" --format json`, processus vivants via `ps` |
 | `collector-quota.js` | Quota claude.ai 5 h / 7 j (+ historique et prévision d'épuisement) et contexte exact de la dernière session rendue, relus dans le cache de la status line `claude-statusbar` (`${CLAUDE_STATUSBAR_CACHE:-~/.cache/claude-statusbar}`), renvoyé dans `/api/sessions` → `quota`. Jamais d'appel réseau ni de lecture d'identifiants |
+| `collector-history.js` | Onglet Historique (`/api/history`) : résumé par transcript Claude mis en cache dans `${ACT_CACHE_DIR:-~/.cache/agents-control-tower}`, prompts de `history.jsonl`, OpenCode via `opencode db`, Vibe via `meta.json`. Tarifs API Anthropic dans `PRICES` (à mettre à jour à chaque nouveau modèle) |
 | `collector-vibe.js` | Sessions Mistral Vibe : `${VIBE_HOME:-~/.vibe}/logs/session/**/meta.json` + `active/*.lock` |
-| `public/` | `index.html`, `style.css`, `app.js` : onglets Claude / OpenCode / Vibe, composant `.card` commun |
+| `public/` | `index.html`, `style.css`, `app.js` (onglets Claude / OpenCode / Vibe, composant `.card` commun), `history.js` (onglet Historique) |
 | `run.sh` / `stop.sh` | Démarrage en arrière-plan (log dans `.run.log`) + ouverture navigateur / arrêt par port |
 
 ## Règles
@@ -29,6 +30,9 @@ Mistral Vibe). Node.js ≥ 18, modules ES, **aucune dépendance npm**, frontend 
   du code et des prompts privés : rien ne sort de la machine.
 - Une source illisible (outil absent, format changé) doit dégrader proprement l'onglet concerné
   (réponse d'erreur JSON), jamais faire tomber le serveur.
+- **Tokens Claude** : une réponse occupe plusieurs lignes du transcript avec le même `message.id`
+  et un `usage` mis à jour au fil du streaming. Ne compter que la dernière ligne de chaque
+  `message.id`, sinon les tokens sont surestimés d'environ 2×.
 - Garder le même contrat d'API (`/api/sessions`, `/api/opencode-sessions`, `/api/vibe-sessions`,
   `/api/health`) : le frontend en dépend.
 - Code et commentaires dans le style existant ; documentation en français.

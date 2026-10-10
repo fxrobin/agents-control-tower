@@ -74,6 +74,30 @@ Auto-refresh (2 s → 30 s ou désactivé), filtre texte et option « masquer ob
 Les transcripts sont lus une fois en entier, puis de façon incrémentale : chaque
 rafraîchissement ne parse que les lignes ajoutées depuis le précédent.
 
+## Onglet Historique
+
+Vue rétrospective sur 30 jours, 90 jours ou 1 an, **tous outils confondus** :
+
+- KPI : temps actif, jours actifs, sessions, prompts Claude, coût Claude **équivalent API**
+  (ce qu'aurait coûté la consommation au tarif API Anthropic, pas ce que coûte l'abonnement)
+  et coût annoncé par OpenCode et Vibe ;
+- calendrier d'activité façon GitHub et temps actif par outil (barres empilées) ;
+- carte « quand tu travailles » : jour de semaine × heure ;
+- projets : temps actif réparti par outil, tendance hebdomadaire, sessions, prompts, coûts ;
+- modèles : volume, tokens de sortie et coût.
+
+Le **temps actif** se compte en créneaux de 15 min contenant au moins un message ; deux
+sessions simultanées ne comptent qu'une fois. Les sessions `claude-mem observer` sont
+affichées à part (arrière-plan) et exclues du temps actif. Vibe ne datant pas ses messages,
+une session Vibe compte de son début à sa fin, plafonnée à 4 h.
+
+Claude Code supprime ses transcripts au-delà de `cleanupPeriodDays` (30 jours par défaut) :
+au-delà, seuls les prompts de `~/.claude/history.jsonl` restent connus.
+
+Indexation : la première ouverture lit tous les transcripts (~5 s pour 1 Go), puis un
+résumé par fichier est gardé dans `~/.cache/agents-control-tower/history-v1.json`
+(surchargeable via `ACT_CACHE_DIR`) ; seuls les fichiers modifiés sont relus ensuite.
+
 ## Sources de données
 
 | Onglet | Source | Collecteur |
@@ -102,6 +126,7 @@ API JSON :
 - `GET /api/sessions` — sessions Claude Code actives + `quota` (fenêtres 5 h / 7 j)
 - `GET /api/opencode-sessions?limit=50` — sessions OpenCode (limit 1..200)
 - `GET /api/vibe-sessions?limit=50` — sessions Mistral Vibe (limit 1..200)
+- `GET /api/history?days=30|90|365` — agrégats de l'onglet Historique
 - `GET /api/health` — `{ ok, version }`
 
 ## Limites connues
