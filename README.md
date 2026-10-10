@@ -92,3 +92,7 @@ API JSON :
 - Statut busy/idle instantané (SSE) plutôt que polling.
 - Graphe des tokens dans le temps, coût estimé par modèle.
 - Vue détaillée d'une session (transcript paginé, timeline des outils).
+
+## Licence
+
+[MIT](LICENSE) © 2026 F.X. ROBIN — fourni « tel quel », sans aucune garantie.

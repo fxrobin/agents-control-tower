@@ -2,6 +2,7 @@
   "name": "agents-control-tower",
   "version": "0.1.0",
   "description": "Tour de contrôle locale (lecture seule) des sessions Claude Code, OpenCode et Mistral Vibe — Linux uniquement",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "start": "node server.js",
