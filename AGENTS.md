@@ -12,7 +12,8 @@ Mistral Vibe). Node.js ≥ 18, modules ES, **aucune dépendance npm**, frontend 
 
 | Fichier | Rôle |
 |---------|------|
-| `server.js` | Serveur `http` natif sur `127.0.0.1:${PORT:-3417}` : fichiers statiques de `public/` + routes `/api/*` |
+| `server.js` | Serveur `http` natif sur `${HOST:-127.0.0.1}:${PORT:-3417}` : fichiers statiques de `public/` + routes `/api/*` |
+| `access.js` | Mode réseau : jeton d'accès (`~/.cache/agents-control-tower/access-token`), échange contre un cookie, refus 401, adresses LAN affichées au démarrage |
 | `collector.js` | Sessions Claude Code : `~/.claude/sessions/*.json` (statut `idle`/`busy`/`waiting`, `waitingFor`, `bridgeSessionId`), PID vivant via `kill(pid, 0)`, transcripts `~/.claude/projects/**/*.jsonl` lus de façon incrémentale (offset mémorisé par fichier), RSS et cwd via `/proc` |
 | `collector-opencode.js` | Sessions OpenCode via `opencode db "<SQL>" --format json`, processus vivants via `ps` |
 | `collector-quota.js` | Quota claude.ai 5 h / 7 j (+ historique et prévision d'épuisement) et contexte exact de la dernière session rendue, relus dans le cache de la status line `claude-statusbar` (`${CLAUDE_STATUSBAR_CACHE:-~/.cache/claude-statusbar}`), renvoyé dans `/api/sessions` → `quota`. Jamais d'appel réseau ni de lecture d'identifiants |
@@ -26,8 +27,10 @@ Mistral Vibe). Node.js ≥ 18, modules ES, **aucune dépendance npm**, frontend 
 - **Zéro dépendance** : n'ajoute pas de package npm (ni Express, ni framework front) sans accord explicite.
 - **Lecture seule** : les collecteurs ne modifient jamais les fichiers des agents observés et
   n'envoient aucun signal aux processus (seul `kill(pid, 0)` est autorisé, pour tester la vie d'un PID).
-- **Local uniquement** : le serveur reste bindé sur `127.0.0.1`. Les transcripts contiennent
-  du code et des prompts privés : rien ne sort de la machine.
+- **Local par défaut** : le serveur écoute sur `127.0.0.1`. Le mode réseau (`HOST=0.0.0.0`) est
+  un choix explicite et passe obligatoirement par `access.js` (jeton + cookie HttpOnly ; seules
+  les requêtes venant de la machine elle-même en sont dispensées). Les transcripts contiennent du
+  code et des prompts privés : aucune route ne doit contourner ce contrôle.
 - Une source illisible (outil absent, format changé) doit dégrader proprement l'onglet concerné
   (réponse d'erreur JSON), jamais faire tomber le serveur.
 - **Tokens Claude** : une réponse occupe plusieurs lignes du transcript avec le même `message.id`

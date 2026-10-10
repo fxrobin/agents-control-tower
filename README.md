@@ -40,7 +40,27 @@ PORT=3418 npm start      # autre port
 npm run dev              # node --watch
 ```
 
-Le serveur n'écoute que sur `127.0.0.1`.
+Par défaut, le serveur n'écoute que sur `127.0.0.1` : il n'est joignable que depuis la machine.
+
+### Accès depuis un téléphone (même réseau)
+
+```bash
+./stop.sh                       # si le serveur tourne déjà en mode local
+HOST=0.0.0.0 ./run.sh --no-browser
+```
+
+`run.sh` affiche alors l'adresse à ouvrir une fois sur le téléphone, jeton compris, par
+exemple `http://192.168.1.42:3417/?token=…`. Le serveur échange ce jeton contre un cookie
+(HttpOnly, 1 an) et le retire de l'URL : le téléphone reste autorisé, même après un
+redémarrage. Sans jeton valide, tout accès venant d'une autre machine reçoit un 401 ; les
+accès depuis le PC lui-même n'en ont pas besoin.
+
+- Le jeton est généré au premier lancement en mode réseau et rangé dans
+  `~/.cache/agents-control-tower/access-token` (droits 600). Le supprimer puis relancer en
+  génère un nouveau et révoque tous les appareils autorisés. `ACT_TOKEN` permet d'imposer le sien.
+- Le pare-feu doit laisser passer le port, et seulement depuis le réseau local, par exemple :
+  `sudo ufw allow from 192.168.1.0/24 to any port 3417 proto tcp`.
+- Le trafic circule en HTTP non chiffré sur le wifi : à réserver à un réseau de confiance.
 
 ## Ce qui est affiché
 

@@ -7,10 +7,15 @@ import { collectOpencodeSessions } from './collector-opencode.js';
 import { collectVibeSessions } from './collector-vibe.js';
 import { collectQuota } from './collector-quota.js';
 import { collectHistory } from './collector-history.js';
+import { checkAccess, isLoopbackHost, lanAddresses, loadOrCreateToken } from './access.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT = parseInt(process.env.PORT || '3417', 10);
+// 127.0.0.1 par défaut : accès réseau seulement si on le demande (HOST=0.0.0.0)
+const HOST = process.env.HOST || '127.0.0.1';
+const NETWORK = !isLoopbackHost(HOST);
+const TOKEN = NETWORK ? loadOrCreateToken() : null;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -40,8 +45,7 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  // CORS for dev
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  if (NETWORK && !checkAccess(req, res, TOKEN)) return;
 
   if (req.url.startsWith('/api/sessions')) {
     try {
@@ -100,7 +104,7 @@ const server = http.createServer((req, res) => {
 
   if (req.url.startsWith('/api/health')) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, version: '0.1.0', publicDir: PUBLIC_DIR }));
+    res.end(JSON.stringify({ ok: true, version: '0.1.0', host: HOST, network: NETWORK }));
     return;
   }
 
@@ -122,8 +126,14 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, HOST, () => {
   console.log(`\n  agents-control-tower v0.1.0`);
   console.log(`  → http://localhost:${PORT}`);
-  console.log(`  API → http://localhost:${PORT}/api/sessions\n`);
+  if (NETWORK) {
+    console.log(`  mode réseau (${HOST}) : jeton requis hors de cette machine`);
+    for (const a of lanAddresses()) {
+      console.log(`  LAN ${a.virtual ? '(virtuelle) ' : ''}${a.name.padEnd(8)} → http://${a.address}:${PORT}/?token=${TOKEN}`);
+    }
+  }
+  console.log('');
 });

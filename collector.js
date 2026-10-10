@@ -9,7 +9,7 @@ const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
 /**
  * Encode a cwd to the project dir key used by Claude Code.
- * /home/robin/dev/toje -> -home-robin-dev-toje
+ * /home/alice/dev/mon-projet -> -home-alice-dev-mon-projet
  */
 function cwdToProjectKey(cwd) {
   return cwd.replace(/\//g, '-');
