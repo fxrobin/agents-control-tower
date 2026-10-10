@@ -134,17 +134,20 @@ function renderClaude(data){
   kpiAlive.textContent = visibleAll.length;
   kpiAliveSub.textContent = `${filtered.length} affichée${filtered.length!==1?'s':''}${hiddenCount?` · ${hiddenCount} masquée${hiddenCount!==1?'s':''}`:''} · maj ${new Date(data.generatedAt).toLocaleTimeString()}`;
   const busy = visibleAll.filter(s=>s.status==='busy').length;
-  const idle = visibleAll.length - busy;
-  kpiBusy.textContent = `${busy} busy · ${idle} idle`;
-  kpiBusySub.textContent = busy? 'au moins une session en travail':'toutes en attente';
+  const needsYou = visibleAll.filter(needsAttention).length;
+  const idle = visibleAll.length - busy - visibleAll.filter(s=>s.status==='waiting').length;
+  kpiBusy.textContent = `${needsYou ? `${needsYou} t'attend${needsYou>1?'ent':''} · ` : ''}${busy} busy · ${idle} idle`;
+  kpiBusy.classList.toggle('attention', needsYou>0);
+  kpiBusySub.textContent = needsYou ? 'une session attend ta réponse' : busy ? 'au moins une session en travail' : 'toutes en attente';
+  // Le compteur dans le titre de l'onglet se voit même quand la page est en arrière-plan
+  document.title = `${needsYou ? `(${needsYou}) ` : ''}Agents Control Tower — Claude Code`;
   const projects = new Set(visibleAll.map(s=>s.cwd)).size;
   kpiProjects.textContent = projects;
   kpiProjectsSub.textContent = [...new Set(visibleAll.map(s=>s.projectName))].slice(0,3).join(', ') || '—';
   const totalIn = visibleAll.reduce((a,s)=>a+(s.tokens?.input||0),0);
   const totalOut = visibleAll.reduce((a,s)=>a+(s.tokens?.output||0),0);
   kpiTokens.textContent = `${fmtNum(totalIn)} / ${fmtNum(totalOut)}`;
-  const tailWarn = visibleAll.some(s=>s.tokensTailSampled) ? ' · tail 300KB' : '';
-  kpiTokensSub.textContent = `input / output${tailWarn}`;
+  kpiTokensSub.textContent = 'input / output';
   renderQuota(data.quota);
 
   if (activeTab!=='claude') return; // ne pas toucher la grille si autre onglet
@@ -196,19 +199,56 @@ function chatHtml(humanText, aiText, busy){
   </div>`;
 }
 
+const WAITING_LABELS = {
+  'dialog open': 'dialogue ouvert',
+  'input needed': 'réponse attendue',
+  'sandbox request': 'accès réseau sandbox',
+  'worker request': 'demande d\'un worker',
+  'goal proposal': 'objectif à valider',
+};
+
+/** Session bloquée sur toi : dialogue/permission ouvert, ou question posée par l'IA. */
+function needsAttention(s){
+  return s.status==='waiting' || s.pendingQuestion;
+}
+
+function fmtTokens(n){
+  return n>=1e6 ? `${+(n/1e6).toFixed(1)}M` : `${Math.round(n/1000)}k`;
+}
+
+function contextHtml(c){
+  if (!c) return '';
+  const pct = Math.round(c.pct);
+  const level = pct>=90 ? 'crit' : pct>=70 ? 'warn' : 'ok';
+  const approx = c.exact ? '' : '~';
+  const title = c.exact ? 'Taille de fenêtre lue dans la status line' : 'Taille de fenêtre déduite (modèle / settings.json)';
+  return `
+    <div class="ctx" data-level="${level}" title="${title}">
+      <div class="ctx-head"><span class="stat-label">Contexte</span><span class="ctx-val">${pct} % · ${fmtTokens(c.tokens)} / ${approx}${fmtTokens(c.windowSize)}</span></div>
+      <div class="gauge"><div class="gauge-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
+function statusPillHtml(s){
+  if (s.status==='waiting') return `<span class="pill waiting">⏳ t'attend · ${esc(WAITING_LABELS[s.waitingFor] || s.waitingFor || 'action requise')}</span>`;
+  if (s.pendingQuestion) return `<span class="pill question">❓ question pour toi</span>`;
+  return `<span class="pill ${s.status==='busy'?'busy':''}">${esc(s.status)}</span>`;
+}
+
 function cardHtmlClaude(s){
   const busy = s.status==='busy';
+  const attention = s.status==='waiting' ? 'waiting' : s.pendingQuestion ? 'question' : '';
   const age = fmtMs(s.ageMs);
   const idle = fmtMs(s.idleMs);
-  const tokens = s.tokens ? `${fmtNum(s.tokens.input)} in · ${fmtNum(s.tokens.output)} out${s.tokens.cacheRead?` · cache ${fmtNum(s.tokens.cacheRead)}`:''}${s.tokensTailSampled?' · tail':''}` : '—';
+  const tokens = s.tokens ? `${fmtNum(s.tokens.input)} in · ${fmtNum(s.tokens.output)} out${s.tokens.cacheRead?` · cache ${fmtNum(s.tokens.cacheRead)}`:''}` : '—';
   const rss = s.proc?.rssKb ? Math.round(s.proc.rssKb/1024)+' MB' : '—';
   const branch = s.gitBranch ? `<span class="pill">⎇ ${esc(s.gitBranch)}</span>` : '';
   const modelShort = s.model ? s.model.replace('claude-','').slice(0,22) : '—';
   return `
-  <div class="card ${busy?'busy':''}">
+  <div class="card ${busy?'busy':''} ${attention}">
     <div class="card-head">
       <div class="card-title"><span class="dot"></span> ${esc(s.projectName)} <span class="pill accent">${esc(modelShort)}</span> ${branch}</div>
-      <span class="pill ${busy?'busy':''}">${esc(s.status)}</span>
+      ${statusPillHtml(s)}
     </div>
     <div class="card-meta">
       ${s.bridgeSessionId ? `<span class="pill remote" title="Remote Control actif — pilotable depuis claude.ai ou l'app mobile&#10;${esc(s.bridgeSessionId)}">📡 remote control</span>` : ''}
@@ -225,9 +265,10 @@ function cardHtmlClaude(s){
       <div class="stat"><div class="stat-label">Tools</div><div class="stat-value">${s.counts? s.counts.toolUse : '—'}${s.lastToolName?` · ${esc(s.lastToolName.slice(0,18))}`:''}</div></div>
     </div>
     <div class="stats">
-      <div class="stat" style="flex:2"><div class="stat-label">Tokens ${s.tokensTailSampled?'(tail)':''}</div><div class="stat-value" style="font-size:12px">${esc(tokens)}</div></div>
+      <div class="stat" style="flex:2"><div class="stat-label">Tokens</div><div class="stat-value" style="font-size:12px">${esc(tokens)}</div></div>
       <div class="stat"><div class="stat-label">JSONL</div><div class="stat-value" style="font-size:12px">${s.jsonl? Math.round(s.jsonl.size/1024)+' KB':'—'}</div></div>
     </div>
+    ${contextHtml(s.context)}
     ${chatHtml(s.lastHumanText, s.lastAssistantText, busy)}
     <div class="card-foot">
       <span>id ${esc(s.sessionId.slice(0,8))} · ${new Date(s.startedAt).toLocaleString()}</span>
@@ -421,19 +462,54 @@ function fmtReset(ms){
   return h ? `${h}h${String(m).padStart(2,'0')}` : `${m}min`;
 }
 
+/** Mini-courbe de la fenêtre : usage réel, rythme régulier (diagonale) et projection. */
+function sparkHtml(w){
+  if (!w.history || w.history.length<2) return '';
+  const span = w.resetsAt - w.windowStart;
+  const x = t => Math.max(0, Math.min(100, (t - w.windowStart) / span * 100)).toFixed(2);
+  const y = p => (30 - Math.max(0, Math.min(100, p)) * 0.3).toFixed(2);
+  const line = w.history.map(([t,p]) => `${x(t)},${y(p)}`).join(' ');
+  const [nowT, nowP] = w.history[w.history.length-1];
+  let proj = '';
+  if (w.exhaustAt) proj = `<line x1="${x(nowT)}" y1="${y(nowP)}" x2="${x(w.exhaustAt)}" y2="${y(100)}" class="spark-proj"/>`;
+  else if (w.projectedAtReset!=null) proj = `<line x1="${x(nowT)}" y1="${y(nowP)}" x2="100" y2="${y(w.projectedAtReset)}" class="spark-proj"/>`;
+  return `<svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" y1="30" x2="100" y2="0" class="spark-pace"/>
+    ${proj}
+    <polyline points="${line}" class="spark-line"/>
+  </svg>`;
+}
+
+function projectionText(w){
+  if (w.ratePerHour==null) return 'rythme : pas encore assez de recul';
+  const rate = w.ratePerHour >= 10 ? Math.round(w.ratePerHour) : w.ratePerHour.toFixed(1);
+  if (w.exhaustAt){
+    const at = new Date(w.exhaustAt).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'});
+    return `⚠ épuisé vers ${at} (dans ${fmtReset(w.exhaustAt - Date.now())}) · ${rate} %/h`;
+  }
+  return `≈ ${Math.round(w.projectedAtReset)} % au reset · ${rate} %/h`;
+}
+
 function renderQuotaTile(el, w, ageMs){
   const value = el.querySelector('.kpi-value');
   const fill = el.querySelector('.gauge-fill');
   const sub = el.querySelector('.kpi-sub');
+  const spark = el.querySelector('.spark');
+  const proj = el.querySelector('.kpi-proj');
   if (!w){
     value.textContent = '—'; fill.style.width = '0%'; el.dataset.level = '';
-    sub.textContent = 'pas de donnée';
+    sub.textContent = 'pas de donnée'; spark.innerHTML = ''; proj.textContent = '';
     return;
   }
   const pct = Math.max(0, Math.min(100, Math.round(w.usedPct)));
   value.textContent = `${pct} %`;
   fill.style.width = `${pct}%`;
   el.dataset.level = pct>=90 ? 'crit' : pct>=70 ? 'warn' : 'ok';
+  // La prévision d'épuisement avant le reset passe la tuile au moins en orange
+  if (w.exhaustAt && el.dataset.level==='ok') el.dataset.level = 'warn';
+  spark.innerHTML = w.expired ? '' : sparkHtml(w);
+  proj.textContent = w.expired ? '' : projectionText(w);
+  proj.classList.toggle('alert', !!w.exhaustAt);
   const reset = w.expired ? 'fenêtre réinitialisée'
     : `reset dans ${fmtReset(w.resetsInMs)} · ${new Date(w.resetsAt).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})}`;
   // Au-delà de 10 min sans rafraîchissement de la status line, la valeur peut être périmée

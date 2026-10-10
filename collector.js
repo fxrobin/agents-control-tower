@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { statusLineSnapshot } from './collector-quota.js';
 
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
@@ -33,29 +34,6 @@ function parseSessionMeta(file) {
   const data = safeReadJson(file);
   if (!data || !data.pid || !data.sessionId) return null;
   return data;
-}
-
-/**
- * Tail-parse a jsonl file efficiently — only reads last N lines.
- * For active sessions we need: model, counts, last messages, token totals.
- */
-function tailJsonl(file, maxLines = 120) {
-  if (!fs.existsSync(file)) return { lines: [] };
-  const stat = fs.statSync(file);
-  const fileSize = stat.size;
-  // Read last ~200KB or whole file if small — enough for last ~100 lines (avg line ~2KB)
-  const tailSize = Math.min(fileSize, 300 * 1024);
-  const fd = fs.openSync(file, 'r');
-  const buf = Buffer.alloc(tailSize);
-  fs.readSync(fd, buf, 0, tailSize, fileSize - tailSize);
-  fs.closeSync(fd);
-  const text = buf.toString('utf-8');
-  // If we truncated, drop first incomplete line
-  const rawLines = text.split('\n').filter(Boolean);
-  const cleaned = tailSize < fileSize ? rawLines.slice(1) : rawLines;
-  // Keep only last maxLines
-  const lines = cleaned.slice(-maxLines);
-  return { lines, totalSize: fileSize, mtime: stat.mtimeMs };
 }
 
 function isNoiseHumanText(t) {
@@ -107,104 +85,92 @@ function toPreview(text, max = 300) {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-function summarizeJsonl(jsonlPath) {
-  const { lines: tailLines, totalSize, mtime } = tailJsonl(jsonlPath);
-  let model = null;
-  let gitBranch = null;
-  let cwd = null;
-  let lastHumanText = null;
-  let lastAssistantText = null;
-  let lastToolName = null;
-
-  // --- Accurate counts via streaming full file (cheap: just JSON parse + counters) ---
-  let userCount = 0, assistantCount = 0, toolUseCount = 0, thinkingCount = 0;
-  let tokenAgg = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
-  let isTailSampled = false;
-  try {
-    // Stream-like: read file in chunks and split lines without loading huge string twice
-    // For simplicity, use readFileSync for now — files are at most ~3MB, OK for 20 sessions
-    // If file > 5MB we fall back to tail-only tokens
-    if (totalSize > 5 * 1024 * 1024) {
-      isTailSampled = true;
-    } else {
-      const content = fs.readFileSync(jsonlPath, 'utf-8');
-      const allLines = content.split('\n');
-      for (const line of allLines) {
-        if (!line) continue;
-        let j; try { j = JSON.parse(line); } catch { continue; }
-        if (j.type === 'user') {
-          userCount++;
-          // Le dernier message humain peut être hors du tail (captures, gros résultats d'outils)
-          const human = humanTextOf(j);
-          if (human) lastHumanText = toPreview(human);
-        }
-        if (j.type === 'assistant') {
-          assistantCount++;
-          const msg = j.message;
-          if (msg?.usage) {
-            tokenAgg.input += msg.usage.input_tokens || 0;
-            tokenAgg.output += msg.usage.output_tokens || 0;
-            tokenAgg.cacheRead += msg.usage.cache_read_input_tokens || 0;
-            tokenAgg.cacheCreate += msg.usage.cache_creation_input_tokens || 0;
-          }
-          for (const b of (msg?.content || [])) {
-            if (b.type === 'thinking') thinkingCount++;
-            if (b.type === 'tool_use') toolUseCount++;
-          }
-        }
-      }
-    }
-  } catch { isTailSampled = true; }
-
-  // If tail-sampled (huge file), tokens are approximate from tail
-  if (isTailSampled) {
-    tokenAgg = { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 };
-    for (const line of tailLines) {
-      let j; try { j = JSON.parse(line); } catch { continue; }
-      if (j.type === 'assistant' && j.message?.usage) {
-        tokenAgg.input += j.message.usage.input_tokens || 0;
-        tokenAgg.output += j.message.usage.output_tokens || 0;
-        tokenAgg.cacheRead += j.message.usage.cache_read_input_tokens || 0;
-        tokenAgg.cacheCreate += j.message.usage.cache_creation_input_tokens || 0;
-      }
-    }
-  }
-
-  // --- Tail for last messages / model / branch (always from tail, cheap) ---
-  for (const line of tailLines) {
-    let j; try { j = JSON.parse(line); } catch { continue; }
-    const t = j.type;
-    if (t === 'user') {
-      const txt = toPreview(humanTextOf(j));
-      if (txt) lastHumanText = txt;
-      if (j.cwd) cwd = j.cwd;
-      if (j.gitBranch) gitBranch = j.gitBranch;
-    }
-    if (t === 'assistant') {
-      const msg = j.message;
-      if (msg?.model) model = msg.model;
-      const content = msg?.content;
-      if (Array.isArray(content)) {
-        for (const b of content) {
-          if (b.type === 'text' && b.text) lastAssistantText = toPreview(b.text) || lastAssistantText;
-          if (b.type === 'tool_use') lastToolName = b.name;
-        }
-      }
-      if (j.cwd) cwd = j.cwd;
-      if (j.gitBranch) gitBranch = j.gitBranch;
-    }
-    if (t === 'attachment' && j.gitBranch) gitBranch = j.gitBranch;
-    if (j.cwd && !cwd) cwd = j.cwd;
-  }
-
+function emptySummary() {
   return {
-    model, gitBranch, cwd,
-    userCount, assistantCount, toolUseCount, thinkingCount,
-    lastHumanText, lastAssistantText, lastToolName,
-    tokenAgg,
-    isTailSampled,
-    totalSize, mtime,
+    model: null, gitBranch: null, cwd: null,
+    userCount: 0, assistantCount: 0, toolUseCount: 0, thinkingCount: 0,
+    lastHumanText: null, lastAssistantText: null, lastToolName: null,
+    contextTokens: null,     // taille du contexte au dernier appel du modèle
+    pendingQuestion: false,  // le dernier tour de l'IA se termine par une question
+    tokenAgg: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
   };
+}
+
+/** Intègre une ligne du transcript au résumé courant. */
+function applyLine(acc, j) {
+  if (j.cwd) acc.cwd = j.cwd;
+  if (j.gitBranch) acc.gitBranch = j.gitBranch;
+  if (j.type === 'user') {
+    acc.userCount++;
+    const txt = toPreview(humanTextOf(j));
+    if (txt) { acc.lastHumanText = txt; acc.pendingQuestion = false; }
+  }
+  if (j.type === 'assistant') {
+    acc.assistantCount++;
+    const msg = j.message;
+    if (msg?.model) acc.model = msg.model;
+    const u = msg?.usage;
+    if (u) {
+      acc.tokenAgg.input += u.input_tokens || 0;
+      acc.tokenAgg.output += u.output_tokens || 0;
+      acc.tokenAgg.cacheRead += u.cache_read_input_tokens || 0;
+      acc.tokenAgg.cacheCreate += u.cache_creation_input_tokens || 0;
+      if (!j.isSidechain) {
+        acc.contextTokens = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      }
+    }
+    for (const b of (Array.isArray(msg?.content) ? msg.content : [])) {
+      if (b.type === 'thinking') acc.thinkingCount++;
+      if (b.type === 'text' && b.text) {
+        acc.lastAssistantText = toPreview(b.text) || acc.lastAssistantText;
+        acc.pendingQuestion = /\?\s*$/.test(b.text);
+      }
+      if (b.type === 'tool_use') { acc.toolUseCount++; acc.lastToolName = b.name; acc.pendingQuestion = false; }
+    }
+  }
+}
+
+/**
+ * Résumés par transcript, mis à jour de façon incrémentale : un transcript n'est lu en
+ * entier qu'une fois, puis seuls les octets ajoutés depuis le relevé précédent sont
+ * parsés. `rest` garde la dernière ligne incomplète (en cours d'écriture).
+ */
+const transcripts = new Map();
+const CHUNK_SIZE = 4 * 1024 * 1024;
+
+function summarizeJsonl(jsonlPath) {
+  const stat = fs.statSync(jsonlPath);
+  let state = transcripts.get(jsonlPath);
+  // Fichier tronqué ou remplacé : on repart de zéro
+  if (!state || stat.size < state.offset) {
+    state = { offset: 0, rest: Buffer.alloc(0), acc: emptySummary() };
+    transcripts.set(jsonlPath, state);
+  }
+  if (stat.size > state.offset) {
+    const fd = fs.openSync(jsonlPath, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(CHUNK_SIZE, stat.size - state.offset));
+      while (state.offset < stat.size) {
+        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, stat.size - state.offset), state.offset);
+        if (n <= 0) break;
+        state.offset += n;
+        // Découpe sur les octets '\n' : un caractère UTF-8 n'est jamais coupé en deux
+        let data = Buffer.concat([state.rest, buf.subarray(0, n)]);
+        let nl;
+        while ((nl = data.indexOf(10)) !== -1) {
+          const line = data.subarray(0, nl).toString('utf-8');
+          data = data.subarray(nl + 1);
+          if (!line) continue;
+          let j; try { j = JSON.parse(line); } catch { continue; }
+          applyLine(state.acc, j);
+        }
+        state.rest = Buffer.from(data);
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+  return { ...state.acc, totalSize: stat.size, mtime: stat.mtimeMs };
 }
 
 function findJsonlForSession(sessionId, cwd) {
@@ -245,7 +211,33 @@ function getProcInfo(pid) {
   }
 }
 
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+const LARGE_CONTEXT_WINDOW = 1_000_000;
+// Tailles de fenêtre exactes vues dans la status line, mémorisées par session
+const knownContextWindows = new Map();
+
+function defaultModelHas1mContext() {
+  const model = safeReadJson(path.join(CLAUDE_DIR, 'settings.json'))?.model;
+  return typeof model === 'string' && model.includes('[1m]');
+}
+
+/**
+ * Fenêtre de contexte de la session. Exacte quand la status line l'a fournie pour cette
+ * session ; sinon déduite (contexte déjà > 200k, modèle Fable, ou `[1m]` dans settings).
+ */
+function contextWindowFor(sessionId, model, usedTokens, snapshot) {
+  if (snapshot?.sessionId === sessionId && snapshot.contextWindowSize) {
+    knownContextWindows.set(sessionId, snapshot.contextWindowSize);
+  }
+  if (knownContextWindows.has(sessionId)) return { size: knownContextWindows.get(sessionId), exact: true };
+  const large = (usedTokens || 0) > DEFAULT_CONTEXT_WINDOW
+    || /fable|\[1m\]/.test(model || '')
+    || defaultModelHas1mContext();
+  return { size: large ? LARGE_CONTEXT_WINDOW : DEFAULT_CONTEXT_WINDOW, exact: false };
+}
+
 export function collectSessions() {
+  const snapshot = statusLineSnapshot();
   const metas = getRecentSessionsJsons()
     .map(parseSessionMeta)
     .filter(Boolean)
@@ -260,6 +252,8 @@ export function collectSessions() {
     const updatedAt = meta.updatedAt || meta.startedAt;
     const ageMs = Date.now() - meta.startedAt;
     const idleMs = Date.now() - (meta.statusUpdatedAt || meta.updatedAt || meta.startedAt);
+    const contextTokens = summary?.contextTokens ?? null;
+    const contextWindow = contextTokens !== null ? contextWindowFor(meta.sessionId, summary?.model, contextTokens, snapshot) : null;
 
     // History preview fallback — history.jsonl display field indexed by sessionId
     // We don't parse it for v1 (costly), summary already has lastHumanText
@@ -270,7 +264,17 @@ export function collectSessions() {
       name: meta.name || meta.sessionId.slice(0, 8),
       cwd: meta.cwd,
       projectName: meta.cwd ? path.basename(meta.cwd) : 'unknown',
-      status: meta.status || 'unknown', // idle | busy etc from Claude's own state machine
+      status: meta.status || 'unknown', // idle | busy | waiting, écrit par Claude Code lui-même
+      // Avec status=waiting : ce qui bloque ('dialog open', 'input needed', 'sandbox request'…)
+      waitingFor: meta.waitingFor || null,
+      // Session idle dont la dernière réponse de l'IA se termine par une question
+      pendingQuestion: meta.status === 'idle' && !!summary?.pendingQuestion,
+      context: contextWindow ? {
+        tokens: contextTokens,
+        windowSize: contextWindow.size,
+        pct: Math.min(100, contextTokens / contextWindow.size * 100),
+        exact: contextWindow.exact,
+      } : null,
       kind: meta.kind,
       entrypoint: meta.entrypoint,
       // Présent seulement quand la session est reliée à claude.ai via Remote Control
@@ -292,16 +296,15 @@ export function collectSessions() {
         thinking: summary.thinkingCount,
       } : null,
       tokens: summary?.tokenAgg || null,
-      tokensTailSampled: summary?.isTailSampled || false,
       lastHumanText: summary?.lastHumanText || null,
       lastAssistantText: summary?.lastAssistantText || null,
       lastToolName: summary?.lastToolName || null,
     };
   });
 
-  // Sort: busy first, then most recent activity first
+  // Sort: sessions qui t'attendent d'abord, puis busy, puis activité la plus récente
   sessions.sort((a, b) => {
-    const busyRank = s => s.status === 'busy' ? 0 : 1;
+    const busyRank = s => s.status === 'waiting' ? 0 : s.pendingQuestion ? 1 : s.status === 'busy' ? 2 : 3;
     const r = busyRank(a) - busyRank(b);
     if (r !== 0) return r;
     return b.updatedAt - a.updatedAt;

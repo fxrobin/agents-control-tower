@@ -46,16 +46,33 @@ Le serveur n'écoute que sur `127.0.0.1`.
 
 Pour chaque session Claude Code active :
 
-- projet (`cwd`), PID, nom, statut (`busy` / `idle`), version, entrypoint ;
-- modèle (dernier `message.model` du transcript) et branche git ;
+- **ce qui demande ton attention** : bord rouge « ⏳ t'attend » quand Claude Code signale
+  lui-même un blocage (`status: waiting` + `waitingFor` : dialogue ou permission ouvert,
+  réponse attendue, accès réseau sandbox…), bord violet « ❓ question pour toi » quand la
+  session est idle et que la dernière réponse de l'IA se termine par une question. Ces
+  sessions remontent en tête, et leur nombre s'affiche dans le titre de l'onglet : `(2) Agents…` ;
+- badge **📡 remote control** quand la session est pilotable depuis claude.ai ;
+- **jauge de contexte** : tokens du dernier appel au modèle rapportés à la fenêtre (200k ou 1M).
+  La taille est exacte quand la status line l'a fournie pour la session, déduite sinon
+  (préfixe `~`) ;
+- projet (`cwd`), PID, nom, statut, version, entrypoint, modèle et branche git ;
 - âge de la session, inactivité, mémoire RSS ;
-- nombre de messages user ⇄ assistant, `tool_use`, `thinking` ;
-- tokens `input / output / cacheRead / cacheCreate` ;
-- aperçu du dernier message user et assistant.
+- nombre de messages user ⇄ assistant, `tool_use`, `thinking`, et tokens cumulés ;
+- fil de discussion : dernier message humain et dernière réponse de l'IA, avec avatars.
 
-Plus des KPI globaux, dont le **quota claude.ai en pourcentage** sur les fenêtres de 5 h et de
-7 jours (jauge verte / orange ≥ 70 % / rouge ≥ 90 %, heure de réinitialisation), un auto-refresh (2 s → 30 s ou désactivé), un filtre texte et l'option
-« masquer observer-sessions » (sessions techniques de `claude-mem`).
+Au-dessus des cartes, des KPI globaux, dont le **quota claude.ai** sur les fenêtres de 5 h et de
+7 jours :
+
+- pourcentage utilisé, jauge verte / orange ≥ 70 % / rouge ≥ 90 %, heure de réinitialisation ;
+- mini-courbe de la fenêtre en cours (diagonale pointillée = rythme régulier) ;
+- **prévision** au rythme récent (30 min pour la fenêtre 5 h, 24 h pour la fenêtre 7 jours) :
+  pourcentage atteint au reset, ou « ⚠ épuisé vers 16:55 » si le quota sera dépassé avant.
+
+Auto-refresh (2 s → 30 s ou désactivé), filtre texte et option « masquer observer-sessions »
+(sessions techniques de `claude-mem`).
+
+Les transcripts sont lus une fois en entier, puis de façon incrémentale : chaque
+rafraîchissement ne parse que les lignes ajoutées depuis le précédent.
 
 ## Sources de données
 
@@ -64,7 +81,7 @@ Plus des KPI globaux, dont le **quota claude.ai en pourcentage** sur les fenêtr
 | Claude Code | `~/.claude/sessions/*.json` (PID vivant) + `~/.claude/projects/<projet>/<sessionId>.jsonl` + `/proc` | `collector.js` |
 | OpenCode | `opencode db` (SQLite `~/.local/share/opencode/opencode.db`) + `ps` | `collector-opencode.js` |
 | Mistral Vibe | `~/.vibe/logs/session/**/meta.json` + `active/*.lock` | `collector-vibe.js` |
-| Quota 5 h / 7 j | `~/.cache/claude-statusbar/last_stdin.json` (`rate_limits`), sinon `rate_latest.*.json` | `collector-quota.js` |
+| Quota 5 h / 7 j | `~/.cache/claude-statusbar/last_stdin.json` (`rate_limits`), sinon `rate_latest.*.json` ; historique `rate_projection.*.json` | `collector-quota.js` |
 
 Claude Code ne transmet `rate_limits` qu'au script de status line et ne l'écrit nulle part :
 les jauges relisent donc le cache de `claude-statusbar` (chemin surchargeable via
@@ -91,7 +108,6 @@ API JSON :
 
 - **Visualisation seule** : aucune action sur les sessions (pas de kill, pas d'injection de message).
 - Tokens Claude Code = somme brute des `usage` du transcript, sans coût en $.
-- Transcript > 5 Mo : tokens estimés depuis les 300 derniers Ko (`isTailSampled`).
 - Rafraîchissement par polling HTTP, pas de push temps réel.
 - Les formats de stockage de Claude Code, OpenCode et Vibe ne sont pas des API publiques :
   une mise à jour de ces outils peut casser un collecteur.
