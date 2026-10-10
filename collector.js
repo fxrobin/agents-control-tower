@@ -63,9 +63,48 @@ function isNoiseHumanText(t) {
   const s = t.trim();
   if (s.startsWith('<task-notification>')) return true;
   if (s.startsWith('<command-name>')) return true;
+  if (s.startsWith('<local-command-')) return true;
   if (s.startsWith('Condense the tool payload')) return true;
-  if (s.length < 3) return true;
+  if (s.startsWith('[Request interrupted')) return true;
+  if (s.startsWith('[Image')) return true;
+  if (s.length < 2) return true;
   return false;
+}
+
+/**
+ * Texte tapé par l'humain dans une ligne `user`, ou null si la ligne est technique.
+ * Les transcripts récents marquent l'auteur dans `origin.kind` ('human', 'peer',
+ * 'task-notification'…) ; `isMeta` signale les injections du harness (images, skills).
+ * Sans `origin` (anciennes versions), on retombe sur l'heuristique isNoiseHumanText.
+ */
+function humanTextOf(j) {
+  if (j.isMeta) return null;
+  if (j.origin && j.origin.kind !== 'human') return null;
+  const content = j.message?.content;
+  const parts = typeof content === 'string'
+    ? [content]
+    : Array.isArray(content) ? content.filter(b => b.type === 'text' && b.text).map(b => b.text) : [];
+  const txt = parts.filter(p => !isNoiseHumanText(p)).join(' ');
+  if (!j.origin && isNoiseHumanText(txt)) return null;
+  return txt.trim() ? txt : null;
+}
+
+/** Version lisible d'un message pour l'aperçu : sans balises techniques ni Markdown. */
+function toPreview(text, max = 300) {
+  if (!text) return null;
+  const s = text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, ' ')
+    .replace(/```[\s\S]*?```/g, ' [code] ')
+    .replace(/\[Image #\d+\]/g, '🖼')
+    .replace(/!?\[([^\]]+)\]\([^)]*\)/g, '$1')       // liens et images Markdown
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '') // titres, citations, puces
+    .replace(/(\*\*|__|~~)(.+?)\1/g, '$2')              // gras, barré
+    .replace(/`([^`]+)`/g, '$1')                        // code inline
+    .replace(/^\s*\|.*\|\s*$/gm, ' ')                   // lignes de tableau
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!s) return null;
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
 function summarizeJsonl(jsonlPath) {
@@ -74,7 +113,6 @@ function summarizeJsonl(jsonlPath) {
   let gitBranch = null;
   let cwd = null;
   let lastHumanText = null;
-  let lastHumanTextRaw = null;
   let lastAssistantText = null;
   let lastToolName = null;
 
@@ -94,7 +132,12 @@ function summarizeJsonl(jsonlPath) {
       for (const line of allLines) {
         if (!line) continue;
         let j; try { j = JSON.parse(line); } catch { continue; }
-        if (j.type === 'user') userCount++;
+        if (j.type === 'user') {
+          userCount++;
+          // Le dernier message humain peut être hors du tail (captures, gros résultats d'outils)
+          const human = humanTextOf(j);
+          if (human) lastHumanText = toPreview(human);
+        }
         if (j.type === 'assistant') {
           assistantCount++;
           const msg = j.message;
@@ -132,12 +175,8 @@ function summarizeJsonl(jsonlPath) {
     let j; try { j = JSON.parse(line); } catch { continue; }
     const t = j.type;
     if (t === 'user') {
-      const content = j.message?.content;
-      let txt = null;
-      if (typeof content === 'string' && content.trim()) txt = content.slice(0, 300);
-      else if (Array.isArray(content)) txt = content.find(b => b.type === 'text')?.text?.slice(0, 300) || null;
-      if (txt && !isNoiseHumanText(txt)) lastHumanText = txt;
-      if (txt) lastHumanTextRaw = txt;
+      const txt = toPreview(humanTextOf(j));
+      if (txt) lastHumanText = txt;
       if (j.cwd) cwd = j.cwd;
       if (j.gitBranch) gitBranch = j.gitBranch;
     }
@@ -147,7 +186,7 @@ function summarizeJsonl(jsonlPath) {
       const content = msg?.content;
       if (Array.isArray(content)) {
         for (const b of content) {
-          if (b.type === 'text' && b.text) lastAssistantText = b.text.slice(0, 300);
+          if (b.type === 'text' && b.text) lastAssistantText = toPreview(b.text) || lastAssistantText;
           if (b.type === 'tool_use') lastToolName = b.name;
         }
       }
@@ -157,8 +196,6 @@ function summarizeJsonl(jsonlPath) {
     if (t === 'attachment' && j.gitBranch) gitBranch = j.gitBranch;
     if (j.cwd && !cwd) cwd = j.cwd;
   }
-  // If lastHumanText was filtered as noise, keep raw as fallback (so we show something)
-  if (!lastHumanText && lastHumanTextRaw) lastHumanText = lastHumanTextRaw;
 
   return {
     model, gitBranch, cwd,
@@ -236,6 +273,8 @@ export function collectSessions() {
       status: meta.status || 'unknown', // idle | busy etc from Claude's own state machine
       kind: meta.kind,
       entrypoint: meta.entrypoint,
+      // Présent seulement quand la session est reliée à claude.ai via Remote Control
+      bridgeSessionId: meta.bridgeSessionId || null,
       version: meta.version,
       startedAt: meta.startedAt,
       updatedAt,

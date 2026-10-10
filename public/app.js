@@ -115,6 +115,7 @@ function renderClaude(data){
       (s.model||'').toLowerCase().includes(q) ||
       (s.lastToolName||'').toLowerCase().includes(q) ||
       (s.name||'').toLowerCase().includes(q) ||
+      (s.bridgeSessionId && 'remote control'.includes(q)) ||
       String(s.pid).includes(q)
     );
   }
@@ -158,6 +159,42 @@ function renderClaude(data){
   grid.innerHTML = filtered.map(s => cardHtmlClaude(s)).join('');
 }
 
+// Petits personnages du fil de discussion : un humain (user) et un robot (IA).
+const AVATAR_HUMAN = `<svg viewBox="0 0 32 32" aria-hidden="true">
+  <circle cx="16" cy="16" r="15" class="av-bg"/>
+  <path d="M5.5 27.5c1.8-5 5.6-7.5 10.5-7.5s8.7 2.5 10.5 7.5A15 15 0 0 1 5.5 27.5z" class="av-body"/>
+  <circle cx="16" cy="13" r="6.2" class="av-skin"/>
+  <path d="M9.6 12.4c.2-4 3-6.4 6.4-6.4s6.3 2.3 6.4 6.3c-1.6-.2-3.9-1.3-5-3-1.6 1.9-4.6 3-7.8 3.1z" class="av-hair"/>
+  <circle cx="13.7" cy="13.6" r=".9" class="av-ink"/><circle cx="18.3" cy="13.6" r=".9" class="av-ink"/>
+  <path d="M13.9 16.3c1.2 1 3 1 4.2 0" class="av-smile"/>
+</svg>`;
+const AVATAR_AI = `<svg viewBox="0 0 32 32" aria-hidden="true">
+  <circle cx="16" cy="16" r="15" class="av-bg"/>
+  <line x1="16" y1="4.5" x2="16" y2="8" class="av-antenna"/><circle cx="16" cy="4.3" r="1.6" class="av-led"/>
+  <rect x="7.5" y="8" width="17" height="13" rx="4" class="av-head"/>
+  <rect x="5.4" y="12.5" width="2.1" height="4.5" rx="1" class="av-head"/><rect x="24.5" y="12.5" width="2.1" height="4.5" rx="1" class="av-head"/>
+  <rect x="10" y="11" width="12" height="7" rx="2.5" class="av-visor"/>
+  <circle cx="13.4" cy="14.5" r="1.5" class="av-eye"/><circle cx="18.6" cy="14.5" r="1.5" class="av-eye"/>
+  <path d="M9.5 29.5c.8-3.9 3.3-6 6.5-6s5.7 2.1 6.5 6" class="av-head"/>
+</svg>`;
+
+function bubbleHtml(role, text){
+  const human = role==='human';
+  return `
+    <div class="msg ${human?'msg-human':'msg-ai'}">
+      <div class="avatar" title="${human?'Humain':'IA'}">${human?AVATAR_HUMAN:AVATAR_AI}</div>
+      <div class="bubble"><span class="who">${human?'Humain':'IA'}</span><span class="bubble-text">${esc(text)}</span></div>
+    </div>`;
+}
+
+function chatHtml(humanText, aiText, busy){
+  if (!humanText && !aiText) return `<div class="preview empty">pas encore de messages texte (outils/thinking uniquement)</div>`;
+  return `<div class="chat ${busy?'thinking':''}">
+    ${humanText ? bubbleHtml('human', humanText) : ''}
+    ${aiText ? bubbleHtml('ai', aiText) : ''}
+  </div>`;
+}
+
 function cardHtmlClaude(s){
   const busy = s.status==='busy';
   const age = fmtMs(s.ageMs);
@@ -173,6 +210,7 @@ function cardHtmlClaude(s){
       <span class="pill ${busy?'busy':''}">${esc(s.status)}</span>
     </div>
     <div class="card-meta">
+      ${s.bridgeSessionId ? `<span class="pill remote" title="Remote Control actif — pilotable depuis claude.ai ou l'app mobile&#10;${esc(s.bridgeSessionId)}">📡 remote control</span>` : ''}
       <span class="pill">pid ${s.pid}</span>
       <span class="pill">${esc(s.name)}</span>
       <span class="pill">${esc(s.version||'')}</span>
@@ -189,8 +227,7 @@ function cardHtmlClaude(s){
       <div class="stat" style="flex:2"><div class="stat-label">Tokens ${s.tokensTailSampled?'(tail)':''}</div><div class="stat-value" style="font-size:12px">${esc(tokens)}</div></div>
       <div class="stat"><div class="stat-label">JSONL</div><div class="stat-value" style="font-size:12px">${s.jsonl? Math.round(s.jsonl.size/1024)+' KB':'—'}</div></div>
     </div>
-    ${s.lastHumanText ? `<div class="preview"><strong>user:</strong> ${esc(s.lastHumanText)}</div>` : ''}
-    ${s.lastAssistantText ? `<div class="preview"><strong>assistant:</strong> ${esc(s.lastAssistantText)}</div>` : (!s.lastHumanText?`<div class="preview empty">pas encore de messages texte (outils/thinking uniquement)</div>`:'')}
+    ${chatHtml(s.lastHumanText, s.lastAssistantText, busy)}
     <div class="card-foot">
       <span>id ${esc(s.sessionId.slice(0,8))} · ${new Date(s.startedAt).toLocaleString()}</span>
       <span>${esc(s.entrypoint||'')} · ${esc(s.kind||'')}</span>

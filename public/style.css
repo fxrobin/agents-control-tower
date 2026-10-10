@@ -67,6 +67,7 @@ main{padding:0 22px 22px}
 .pill{border:1px solid var(--card-border);background:var(--panel);padding:3px 7px;border-radius:999px;font-size:11px}
 .pill.accent{border-color:rgba(124,140,255,.35);color:var(--accent)}
 .pill.busy{border-color:rgba(245,158,11,.35);color:var(--busy)}
+.pill.remote{border-color:rgba(79,209,197,.45);background:rgba(79,209,197,.1);color:var(--accent-2);font-weight:600}
 .cwd{font-family:var(--mono);font-size:12px;color:#cbd5e1;background:rgba(255,255,255,.04);border:1px solid var(--card-border);padding:7px 9px;border-radius:8px;word-break:break-all}
 .stats{display:flex;gap:8px;flex-wrap:wrap}
 .stat{flex:1;min-width:90px;background:var(--panel);border:1px solid var(--card-border);border-radius:10px;padding:8px 10px}
@@ -75,6 +76,40 @@ main{padding:0 22px 22px}
 .preview{font-size:12px;color:#cbd5e1;line-height:1.45;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);padding:8px 9px;border-radius:8px;max-height:72px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 .preview.empty{color:var(--muted);font-style:italic}
 .preview strong{color:var(--text)}
+/* Fil de discussion : humain à droite, IA à gauche */
+.chat{display:flex;flex-direction:column;gap:8px}
+.msg{display:flex;gap:8px;align-items:flex-end}
+.msg-human{flex-direction:row-reverse}
+.avatar{width:30px;height:30px;flex-shrink:0;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.avatar svg{width:100%;height:100%;display:block}
+.bubble{position:relative;max-width:82%;font-size:12px;line-height:1.45;color:#cbd5e1;padding:7px 10px;border-radius:12px;border:1px solid}
+.bubble-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.who{display:block;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
+.msg-human .bubble{background:rgba(79,209,197,.08);border-color:rgba(79,209,197,.25);border-bottom-right-radius:3px}
+.msg-human .who{color:var(--accent-2);text-align:right}
+.msg-ai .bubble{background:rgba(124,140,255,.08);border-color:rgba(124,140,255,.25);border-bottom-left-radius:3px}
+.msg-ai .who{color:var(--accent)}
+/* Avatar humain */
+.msg-human .av-bg{fill:#12302d}
+.av-body{fill:var(--accent-2)}
+.av-skin{fill:#f2c9a0}
+.av-hair{fill:#5b3a24}
+.av-ink{fill:#1f2937}
+.av-smile{fill:none;stroke:#1f2937;stroke-width:1.1;stroke-linecap:round}
+/* Avatar IA */
+.msg-ai .av-bg{fill:#1c2148}
+.av-head{fill:#c7cdfa;stroke:none}
+path.av-head{fill:var(--accent)}
+.av-antenna{stroke:#c7cdfa;stroke-width:1.4;stroke-linecap:round}
+.av-led{fill:var(--accent-2)}
+.av-visor{fill:#1e2340}
+.av-eye{fill:var(--accent-2)}
+/* Session busy : le robot réfléchit (antenne qui clignote, yeux qui pulsent) */
+.chat.thinking .av-led{fill:var(--busy);animation:av-blink 1s steps(2,start) infinite}
+.chat.thinking .av-eye{animation:av-pulse 1.6s ease-in-out infinite}
+@keyframes av-blink{to{opacity:.2}}
+@keyframes av-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.chat.thinking .av-led,.chat.thinking .av-eye{animation:none}}
 .card-foot{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .empty{text-align:center;padding:40px 20px;color:var(--muted);border:1px dashed var(--card-border);border-radius:var(--radius);background:var(--panel)}
 .empty code{font-family:var(--mono)}
