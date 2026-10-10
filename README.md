@@ -25,6 +25,7 @@ Une page web, un serveur Node.js natif, **zéro dépendance**.
 - Node.js ≥ 18
 - Optionnel : la CLI `opencode` dans le `PATH` (onglet OpenCode)
 - Optionnel : un répertoire `~/.vibe` (onglet Mistral Vibe, surchargeable via `VIBE_HOME`)
+- Optionnel : la status line [`claude-statusbar`](https://pypi.org/project/claude-statusbar/) pour les jauges de quota
 
 ## Lancer
 
@@ -52,7 +53,8 @@ Pour chaque session Claude Code active :
 - tokens `input / output / cacheRead / cacheCreate` ;
 - aperçu du dernier message user et assistant.
 
-Plus des KPI globaux, un auto-refresh (2 s → 30 s ou désactivé), un filtre texte et l'option
+Plus des KPI globaux, dont le **quota claude.ai en pourcentage** sur les fenêtres de 5 h et de
+7 jours (jauge verte / orange ≥ 70 % / rouge ≥ 90 %, heure de réinitialisation), un auto-refresh (2 s → 30 s ou désactivé), un filtre texte et l'option
 « masquer observer-sessions » (sessions techniques de `claude-mem`).
 
 ## Sources de données
@@ -62,6 +64,13 @@ Plus des KPI globaux, un auto-refresh (2 s → 30 s ou désactivé), un filtre t
 | Claude Code | `~/.claude/sessions/*.json` (PID vivant) + `~/.claude/projects/<projet>/<sessionId>.jsonl` + `/proc` | `collector.js` |
 | OpenCode | `opencode db` (SQLite `~/.local/share/opencode/opencode.db`) + `ps` | `collector-opencode.js` |
 | Mistral Vibe | `~/.vibe/logs/session/**/meta.json` + `active/*.lock` | `collector-vibe.js` |
+| Quota 5 h / 7 j | `~/.cache/claude-statusbar/last_stdin.json` (`rate_limits`), sinon `rate_latest.*.json` | `collector-quota.js` |
+
+Claude Code ne transmet `rate_limits` qu'au script de status line et ne l'écrit nulle part :
+les jauges relisent donc le cache de `claude-statusbar` (chemin surchargeable via
+`CLAUDE_STATUSBAR_CACHE`). Sans cette status line, les tuiles affichent « — ». Les valeurs
+datent du dernier rafraîchissement de la status line d'une session ouverte : au-delà de 10 min,
+la tuile indique l'âge du relevé.
 
 ## Architecture
 
@@ -73,7 +82,7 @@ opencode db   + ps    ──► collector-opencode.js ─┼─► server.js (ht
 
 API JSON :
 
-- `GET /api/sessions` — sessions Claude Code actives
+- `GET /api/sessions` — sessions Claude Code actives + `quota` (fenêtres 5 h / 7 j)
 - `GET /api/opencode-sessions?limit=50` — sessions OpenCode (limit 1..200)
 - `GET /api/vibe-sessions?limit=50` — sessions Mistral Vibe (limit 1..200)
 - `GET /api/health` — `{ ok, version }`

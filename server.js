@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { collectSessions } from './collector.js';
 import { collectOpencodeSessions } from './collector-opencode.js';
 import { collectVibeSessions } from './collector-vibe.js';
+import { collectQuota } from './collector-quota.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -43,7 +44,7 @@ const server = http.createServer((req, res) => {
 
   if (req.url.startsWith('/api/sessions')) {
     try {
-      const data = collectSessions();
+      const data = { ...collectSessions(), quota: collectQuota() };
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
       res.end(JSON.stringify(data));
     } catch (e) {

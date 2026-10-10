@@ -44,6 +44,16 @@ h1{margin:0;font-size:18px;letter-spacing:.02em}
 .kpi-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .kpi-value{font-size:22px;font-weight:800;margin-top:6px}
 .kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+#kpis-claude{grid-template-columns:repeat(6,1fr)}
+@media(max-width:1400px){#kpis-claude{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){#kpis-claude{grid-template-columns:repeat(2,1fr)}}
+/* Jauges de quota : vert < 70 %, orange < 90 %, rouge au-delà */
+.quota{--level:var(--idle)}
+.quota[data-level="warn"]{--level:var(--busy)}
+.quota[data-level="crit"]{--level:#ef4444}
+.quota .kpi-value{color:var(--level)}
+.gauge{height:6px;margin-top:8px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
+.gauge-fill{height:100%;width:0;border-radius:inherit;background:var(--level);transition:width .4s ease}
 main{padding:0 22px 22px}
 .toolbar{display:flex;gap:12px;align-items:center;margin:6px 0 14px}
 .toolbar input{flex:1;max-width:520px;background:var(--panel);border:1px solid var(--card-border);color:var(--text);padding:9px 12px;border-radius:10px;outline:none}

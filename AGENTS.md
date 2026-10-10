@@ -15,6 +15,7 @@ Mistral Vibe). Node.js ≥ 18, modules ES, **aucune dépendance npm**, frontend 
 | `server.js` | Serveur `http` natif sur `127.0.0.1:${PORT:-3417}` : fichiers statiques de `public/` + routes `/api/*` |
 | `collector.js` | Sessions Claude Code : `~/.claude/sessions/*.json`, PID vivant via `kill(pid, 0)`, transcripts `~/.claude/projects/**/*.jsonl`, RSS et cwd via `/proc` |
 | `collector-opencode.js` | Sessions OpenCode via `opencode db "<SQL>" --format json`, processus vivants via `ps` |
+| `collector-quota.js` | Quota claude.ai 5 h / 7 j relu dans le cache de la status line `claude-statusbar` (`${CLAUDE_STATUSBAR_CACHE:-~/.cache/claude-statusbar}`), renvoyé dans `/api/sessions` → `quota`. Jamais d'appel réseau ni de lecture d'identifiants |
 | `collector-vibe.js` | Sessions Mistral Vibe : `${VIBE_HOME:-~/.vibe}/logs/session/**/meta.json` + `active/*.lock` |
 | `public/` | `index.html`, `style.css`, `app.js` : onglets Claude / OpenCode / Vibe, composant `.card` commun |
 | `run.sh` / `stop.sh` | Démarrage en arrière-plan (log dans `.run.log`) + ouverture navigateur / arrêt par port |

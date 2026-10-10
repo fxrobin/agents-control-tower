@@ -145,6 +145,7 @@ function renderClaude(data){
   kpiTokens.textContent = `${fmtNum(totalIn)} / ${fmtNum(totalOut)}`;
   const tailWarn = visibleAll.some(s=>s.tokensTailSampled) ? ' · tail 300KB' : '';
   kpiTokensSub.textContent = `input / output${tailWarn}`;
+  renderQuota(data.quota);
 
   if (activeTab!=='claude') return; // ne pas toucher la grille si autre onglet
   if (filtered.length===0){
@@ -410,6 +411,46 @@ function cardHtmlVibe(s){
 function esc(s){
   if (s==null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- Quota claude.ai (fenêtres 5 h / 7 jours) ---
+function fmtReset(ms){
+  if (ms==null) return '—';
+  const h = Math.floor(ms/3600000), m = Math.floor(ms%3600000/60000);
+  if (h>=24) return `${Math.floor(h/24)}j ${h%24}h`;
+  return h ? `${h}h${String(m).padStart(2,'0')}` : `${m}min`;
+}
+
+function renderQuotaTile(el, w, ageMs){
+  const value = el.querySelector('.kpi-value');
+  const fill = el.querySelector('.gauge-fill');
+  const sub = el.querySelector('.kpi-sub');
+  if (!w){
+    value.textContent = '—'; fill.style.width = '0%'; el.dataset.level = '';
+    sub.textContent = 'pas de donnée';
+    return;
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(w.usedPct)));
+  value.textContent = `${pct} %`;
+  fill.style.width = `${pct}%`;
+  el.dataset.level = pct>=90 ? 'crit' : pct>=70 ? 'warn' : 'ok';
+  const reset = w.expired ? 'fenêtre réinitialisée'
+    : `reset dans ${fmtReset(w.resetsInMs)} · ${new Date(w.resetsAt).toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit'})}`;
+  // Au-delà de 10 min sans rafraîchissement de la status line, la valeur peut être périmée
+  const stale = ageMs!=null && ageMs > 10*60000 ? ` · relevé il y a ${fmtMs(ageMs)}` : '';
+  sub.textContent = reset + stale;
+}
+
+function renderQuota(q){
+  const t5 = document.getElementById('quota5h'), t7 = document.getElementById('quota7d');
+  if (!q || !q.available){
+    for (const t of [t5, t7]) renderQuotaTile(t, null);
+    t5.title = t7.title = q?.reason || 'quota indisponible';
+    return;
+  }
+  renderQuotaTile(t5, q.fiveHour, q.ageMs);
+  renderQuotaTile(t7, q.sevenDay, q.ageMs);
+  t5.title = t7.title = `source : ${q.source}`;
 }
 
 function renderActive(){
