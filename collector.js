@@ -42,6 +42,7 @@ function isNoiseHumanText(t) {
   if (s.startsWith('<task-notification>')) return true;
   if (s.startsWith('<command-name>')) return true;
   if (s.startsWith('<local-command-')) return true;
+  if (s.startsWith('<bash-stdout>') || s.startsWith('<bash-stderr>')) return true; // sortie d'une commande `!`
   if (s.startsWith('Condense the tool payload')) return true;
   if (s.startsWith('[Request interrupted')) return true;
   if (s.startsWith('[Image')) return true;
@@ -62,7 +63,11 @@ function humanTextOf(j) {
   const parts = typeof content === 'string'
     ? [content]
     : Array.isArray(content) ? content.filter(b => b.type === 'text' && b.text).map(b => b.text) : [];
-  const txt = parts.filter(p => !isNoiseHumanText(p)).join(' ');
+  const txt = parts
+    // Commande lancée par l'humain avec `!` : on l'affiche comme une ligne de shell
+    .map(p => p.replace(/<bash-input>([\s\S]*?)<\/bash-input>/g, (_, cmd) => `$ ${cmd.trim()}`))
+    .filter(p => !isNoiseHumanText(p))
+    .join(' ');
   if (!j.origin && isNoiseHumanText(txt)) return null;
   return txt.trim() ? txt : null;
 }
