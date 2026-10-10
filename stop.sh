@@ -11,7 +11,7 @@ pids_for_port() {
 
   # 1) lsof (most reliable)
   if command -v lsof >/dev/null 2>&1; then
-    pids=$(lsof -ti tcp:"${PORT}" 2>/dev/null || true)
+    pids=$(lsof -ti tcp:"${PORT}" -sTCP:LISTEN 2>/dev/null || true)
     if [[ -n "$pids" ]]; then echo "$pids"; return 0; fi
   fi
 
